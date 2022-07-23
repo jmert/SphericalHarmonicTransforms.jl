@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+SphericalHarmonicTransforms = "b59b3b60-d6a7-4e29-bf1f-fd1ceecb3c6a"
+
+[compat]
+Documenter = "0.25.2, 0.26, 0.27"
