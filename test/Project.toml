@@ -1,5 +1,8 @@
 [deps]
+AssociatedLegendrePolynomials = "2119f1ac-fb78-50f5-8cc0-dda848ebdb19"
+Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -7,4 +10,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestSetExtensions = "98d24dd4-01ad-11ea-1b02-c9a08f80db04"
 
 [compat]
+AssociatedLegendrePolynomials = "1"
+Compat = "3.25, 4"
 Documenter = "0.24, 0.25, 0.26, 0.27"
+FFTW = "1"

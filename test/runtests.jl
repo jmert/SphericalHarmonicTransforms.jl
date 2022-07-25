@@ -24,5 +24,6 @@ macro include(file, desc)
 end
 
 @testset ExtendedTestSet "SphericalHarmonicTransforms" begin
+    @include "reference.jl" "Reference Implementation"
     @include "doctests.jl" "Doctests"
 end
