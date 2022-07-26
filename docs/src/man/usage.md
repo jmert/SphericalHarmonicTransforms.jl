@@ -37,3 +37,26 @@ julia> using SphericalHarmonicTransforms
     ```julia-repl
     julia> import SphericalHarmonicTransforms as SHT
     ```
+
+## Working with pixelizations
+
+!!! note
+    See the [Developer Docs](@ref pixelnew) for more details on implementing support for
+    other pixelizations.
+
+The only built-in pixelization is for an
+[equidistant cylindrical projection](https://en.wikipedia.org/wiki/Equirectangular_projection)
+(ECP), represented by an instance of an [`ECPPixelization`](@ref) structure.
+The constructor takes at least the number of pixels in the colatitude and azimuth
+directions, and optionally an element type as a type parameter which defaults to
+`Float64`.
+(The type parameter is used to determine the element type of newly allocated output arrays.)
+
+```jldoctest Usage
+julia> pix = SHT.ECPPixelization(50, 100) # == SHT.ECPPixelization{Float64}(50, 100)
+50×100 ECPPixelization{Float64}
+```
+
+The object `pix` describes an array which corresponds to a column-major ordered `Float64`
+matrix of size 50 × 100 that covers the sphere with pixels that are spaced uniformly in
+latitude and longitude.

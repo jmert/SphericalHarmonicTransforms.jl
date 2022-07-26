@@ -5,13 +5,13 @@ CurrentModule = SphericalHarmonicTransforms
 
 ## Functions
 
-
 ## Ring-based Pixelizations
 
 ### Pixelizations
 
 ```@docs
 RingPixelization
+ECPPixelization
 ```
 
 ### Abstract Pixelization Interface

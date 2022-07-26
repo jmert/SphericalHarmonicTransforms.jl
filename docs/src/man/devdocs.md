@@ -2,6 +2,10 @@
 
 ```@meta
 CurrentModule = SphericalHarmonicTransforms
+DocTestFilters = Regex[
+        r"Ptr{0x[0-9a-f]+}",
+        r"[0-9\.]+ seconds( \(.*\))?",
+        ]
 ```
 
 ```@contents
@@ -11,7 +15,7 @@ Depth = 2
 
 ## [Adding New Pixelizations](@id pixelnew)
 
-### Necessary Properties of Ring-based Pixelizations
+### [Necessary Properties of Ring-based Pixelizations](@id pixelproperties)
 
 As the name "ring-based pixelizations" suggests, the first obvious requirement for supported
 pixelization schemes is that the format be describable in terms of isolatitude rings.
@@ -109,3 +113,142 @@ knowledge of the pixelization.
 | [`nϕmax()`](@ref)              | The number of pixels in the longest isolatitude ring in the pixelization              |
 
 ### [Example Implementation](@id pixelexample)
+
+The built-in ECP pixelization does not support exact quadrature on the sphere, but it is
+included because the axes are uniformly sampled (so the maps are easily represented as
+matrices without any special handling) and the simplicity of its implementation.
+For more than trivial or example cases, though, it is very likely that another pixelization
+scheme will be required.
+
+A well-known improvement is to modify the ECP grid to permit non-uniformly sampled points in
+``\theta``, with the node locations (and weights, see below) corresponding to the
+[Gauss-Legendre nodes](https://en.wikipedia.org/wiki/Gauss%E2%80%93Legendre_quadrature).
+In this section, we will demonstrate implementing support for spherical harmonic transforms
+on the the Gauss-Legendre (GL) pixelization.
+Computation of the Gauss-Legendre nodes and weights is provided by
+[`FastGaussQuadrature.jl`](https://github.com/JuliaApproximation/FastGaussQuadrature.jl).
+
+The first step is to import the [interface](@ref pixelinterface) types.
+The new `GLPixelization` type must be a subclass of the `AbstractRingPixelization`, where
+the type parameter `R` is the nominal element type used during the transform.
+
+```jldoctest examplepix
+julia> import SphericalHarmonicTransforms: AbstractRingPixelization, Ring,
+               rings, buffer, nring, npix, nϕmax
+
+julia> struct GLPixelization{R} <: AbstractRingPixelization{R}
+           nθ::Int
+           nϕ::Int
+       end
+
+julia> GLPixelization(nθ, nϕ) = GLPixelization{Float64}(nθ, nϕ)
+GLPixelization
+```
+
+Then, the only other **required** step is to implement a specialization of the
+[`rings`](@ref) method to return a vector of [`Ring`](@ref) structures that describe the
+[properties of the ring](@ref pixelproperties).
+
+```jldoctest examplepix
+julia> using FastGaussQuadrature: gausslegendre
+
+julia> function rings(glpix::GLPixelization{R}) where {R}
+           nθ, nϕ = glpix.nθ, glpix.nϕ
+           nθh = (nθ + 1) ÷ 2  # number of rings in N. hemisphere + equator (if nθ is odd)
+           ϕ_π = one(R) / nϕ   # constant pixel offset for all rings
+           Δϕ = 2R(π) / nϕ     # constant azimuthal pixel size for all rings
+           stride = nθ         # constant stride, column-major ordering
+           cθ, sθΔθ = gausslegendre(nθ)  # z = cos(θ) and corresponding weights
+           # z ∈ [-1, 1] and θ ∈ [0, π] run in opposite directions, but cos(θ) == -z
+           cθ = -cθ[1:nθh]
+           sθΔθ = sθΔθ[1:nθh]
+           rings = Vector{Ring}(undef, nθh)
+           for ii in 1:nθh
+               o₁ = ii           # northern-ring offset
+               o₂ = nθ - ii + 1  # southern-ring offset
+               offs = (o₁, o₁ == o₂ ? 0 : o₂)  # pairs, except if both aligned with equator
+               rings[ii] = Ring(offs, stride, nϕ, cθ[ii], ϕ_π, sθΔθ[ii] * Δϕ)
+           end
+           return rings
+       end
+rings (generic function with 3 methods)
+```
+
+With just `rings` implemented, generic methods will then calculate other necessary
+parameters by inspecting the ring list.
+For example, `synthesize` allocates and fills a map buffer, and this is handled generically
+by counting the number of pixels described by the ring structures and allocating a vector
+of equal length:
+```jldoctest examplepix
+julia> glpix = GLPixelization(100, 200)
+100-ring GLPixelization{Float64} with 20000 pixels
+
+julia> npix(glpix)
+20000
+
+julia> buffer(glpix) |> println∘summary
+20000-element Vector{Float64}
+```
+
+While convenient (because only the `ring` method must be written), the generic fallback
+methods are less efficient and/or produce less desirable outputs than if specialized
+methods are written.
+
+For example, the Gauss-Legendre grid is very similar to the ECP grid in that it is often
+very convenient to represent it as a matrix rather than a vector.
+The _shape_ of the map buffers is immaterial, as long as the offsets and strides returned
+by `rings` correspond to elements within the array's linear indices.
+(Or said differently, the transforms effectively see any map buffer as its equivalent
+`reshape(mapbuf, :)` vector representation.)
+Overloading the [`buffer`](@ref) function permits synthesizing matrix maps arrays instead
+of vectors:
+```jldoctest examplepix
+julia> function buffer(glpix::GLPixelization, ::Type{T}) where {T}
+           return Matrix{T}(undef, glpix.nθ, glpix.nϕ)
+       end
+buffer (generic function with 4 methods)
+
+julia> buffer(glpix) |> println∘summary
+100×200 Matrix{Float64}
+```
+
+!!! note
+    Be sure to overload the 2-argument method which explicitly takes the descired element
+    type.
+    The 1-argument method will forward the pixelization's type parameter as the second
+    argument if necessary.
+
+The other reason to implement specializations of the
+[optional interface](@ref pixelinterface)
+is that generic methods infer the necessary pixelization properties by iterating through the
+list of all rings and extracting/calculating the relevant quantites.
+We can see this quite obviously as memory allocations when running these functions,
+despite the grid size alone provides all the necessary information (and therefore should
+not require actually allocating the rings vector):
+```jldoctest examplepix
+julia> (nring(glpix), npix(glpix), nϕmax(glpix)); # warmup
+
+julia> @time (nring(glpix), npix(glpix), nϕmax(glpix))
+  0.000063 seconds (332 allocations: 34.312 KiB)
+(100, 20000, 200)
+```
+By overloading specializations for the `GLPixelization` type,
+```jldoctest examplepix
+julia> nring(glpix::GLPixelization) = glpix.nθ
+nring (generic function with 3 methods)
+
+julia> npix(glpix::GLPixelization) = glpix.nθ * glpix.nϕ
+npix (generic function with 3 methods)
+
+julia> nϕmax(glpix::GLPixelization) = glpix.nϕ
+nϕmax (generic function with 3 methods)
+```
+we can avoid such unnecessary computation and allocation:
+```jldoctest examplepix
+julia> (nring(glpix), npix(glpix), nϕmax(glpix)); # warmup
+
+julia> @time (npix(glpix), nϕmax(glpix))
+  0.000009 seconds (2 allocations: 48 bytes)
+(20000, 200)
+```
+(where the remaining allocation is due to the returned tuple of values).

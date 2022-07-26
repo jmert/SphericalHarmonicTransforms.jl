@@ -1,4 +1,9 @@
-using Documenter, SphericalHarmonicTransforms
+using Documenter
+
+# Importing the following into Main changes how types are printed (and therefore impacts
+# doctests) — namely, the module is not prefixed on the type which keeps the names short.
+using SphericalHarmonicTransforms
+using SphericalHarmonicTransforms: ECPPixelization, RingPixelization
 
 doctest = "--fix"  in ARGS ? :fix :
           "--test" in ARGS ? true : false

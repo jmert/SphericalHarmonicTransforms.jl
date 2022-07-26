@@ -1,7 +1,5 @@
 using SphericalHarmonicTransforms
-
-isdefined(Main, :synthesize_reference) || @eval Main include("helpers/reference.jl")
-using .Main: synthesize_reference, analyze_reference
+import ..TestSuite: synthesize_reference, analyze_reference
 
 # Generate complex fields from running real-only synthesis on real and imaginary
 # components separately.

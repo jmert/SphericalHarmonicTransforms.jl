@@ -35,6 +35,15 @@ abstract type AbstractRingPixelization{R} end
 
 _pixeltype(::AbstractRingPixelization{R}) where {R} = R
 
+function Base.show(io::IO, ::MIME"text/plain", ringpix::AbstractRingPixelization)
+    if get(io, :compact, false)
+        show(io, ringpix)
+    else
+        props = _summary(ringpix)
+        print(io, props.nring, "-ring ", summary(ringpix), " with ", props.npix, " pixels")
+    end
+end
+
 """
     rr = rings(ringpix::AbstractRingPixelization)
 
@@ -95,6 +104,12 @@ buffer(ringpix::AbstractRingPixelization) = buffer(ringpix, _pixeltype(ringpix))
     RingPixelization{R} <: AbstractRingPixelization{R}
 
 A pixelization of the unit sphere described by an arbitrary vector of [`Ring`](@ref)s.
+
+# Examples
+```jldoctest; setup = :(import SphericalHarmonicTransforms: ECPPixelization, RingPixelization)
+julia> ringpix = RingPixelization(ECPPixelization(5, 10))
+5-ring RingPixelization{Float64} with 50 pixels
+```
 """
 struct RingPixelization{R} <: AbstractRingPixelization{R}
     rings::Vector{Ring{R}}
@@ -104,3 +119,75 @@ rings(ringpix::RingPixelization) = ringpix.rings
 
 # Convert any other ring map description by collecting the ring descriptions
 RingPixelization(ringpix::AbstractRingPixelization) = RingPixelization(collect(rings(ringpix)))
+
+
+@doc raw"""
+    ECPPixelization{R} <: AbstractRingPixelization{R}
+
+An Equidistant Cylindrical Projection pixelization in column-major order, with dimensions
+`nθ × nϕ` in the colatitude/azimuth directions, respectively.
+
+See also [`RingPixelization`](@ref)
+
+# Examples
+```jldoctest; setup = :(import SphericalHarmonicTransforms: ECPPixelization)
+julia> ECPPixelization(250, 500)
+250×500 ECPPixelization{Float64}
+
+julia> ECPPixelization{Float32}(250, 500)
+250×500 ECPPixelization{Float32}
+```
+
+# Extended help
+
+The described pixelization covers the entire sphere ``[0, π] × [0, 2π]`` with
+uniformly-sized pixels in _coordinate space_ of size ``Δθ = π/n_θ`` by ``Δϕ = 2π/n_ϕ``.
+The pixel _centers_ take on coordinates
+```math
+    (θ_j, ϕ_k) = \left( π \frac{2j + 1}{2n_θ}, 2π \frac{2k + 1}{2n_ϕ} \right)
+```
+for integers ``j ∈ \{0, …, n_θ - 1\}`` and ``k ∈ \{0, …, n_ϕ - 1\}``.
+On the sphere, the pixels cover a solid angle ``ΔΩ_{jk} ≈ \sin(θ_j) Δθ Δϕ``, i.e. the
+pixels' physical size approaches zero towards the poles.
+
+See also
+[equidistant cylindrical projection](https://en.wikipedia.org/wiki/Equirectangular_projection)
+"""
+struct ECPPixelization{R} <: AbstractRingPixelization{R}
+    nθ::Int
+    nϕ::Int
+end
+ECPPixelization(nθ, nϕ) = ECPPixelization{Float64}(Int(nθ), Int(nϕ))
+
+function Base.show(io::IO, ::MIME"text/plain", ecppix::ECPPixelization)
+    if get(io, :compact, false)
+        show(io, ecppix)
+    else
+        print(io, ecppix.nθ, "×", ecppix.nϕ, " ", summary(ecppix))
+    end
+end
+
+function rings(ecppix::ECPPixelization)
+    T = _pixeltype(ecppix)
+    nθ, nϕ = ecppix.nθ, ecppix.nϕ
+    # rings are symmetric over the equator, so only require half
+    nθh = (nθ + 1) ÷ 2
+    # ϕ offset and ΔθΔϕ are same for all rings
+    ϕ_π = one(T) / nϕ
+    ΔθΔϕ = 2T(π)^2 / (nθ * nϕ)
+    function ecpring(ii)
+        o₁ = ii
+        o₂ = nθ - ii + 1
+        offs = (o₁, isodd(nθ) && ii == nθh ? 0 : o₂)
+        sθ, cθ = sincospi(T(2ii - 1) / 2nθ)
+        return Ring{T}(offs, nθ, nϕ, cθ, ϕ_π, sθ * ΔθΔϕ)
+    end
+    return Broadcast.instantiate(Broadcast.broadcasted(ecpring, 1:nθh))
+end
+
+# overload to return square map
+buffer(ecppix::ECPPixelization, ::Type{T}) where {T} = Matrix{T}(undef, ecppix.nθ, ecppix.nϕ)
+# optimized overloads
+nring(ecppix::ECPPixelization) = ecppix.nθ
+npix(ecppix::ECPPixelization) = ecppix.nθ * ecppix.nϕ
+nϕmax(ecppix::ECPPixelization) = ecppix.nϕ

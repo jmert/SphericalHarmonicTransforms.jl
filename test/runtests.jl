@@ -1,5 +1,11 @@
 using Test, TestSetExtensions
-using SphericalHarmonicTransforms # For doctests, include as a binding in Main
+
+# Importing the following into Main changes how types are printed (and therefore impacts
+# doctests) — namely, the module is not prefixed on the type which keeps the names short.
+using SphericalHarmonicTransforms
+using SphericalHarmonicTransforms: ECPPixelization, RingPixelization
+
+include("testsuite.jl")
 
 function prettytime(t)
     v, u = t < 1e3 ? (t, "ns") :
@@ -25,5 +31,6 @@ end
 
 @testset ExtendedTestSet "SphericalHarmonicTransforms" begin
     @include "reference.jl" "Reference Implementation"
+    @include "pixels.jl" "Pixelizations"
     @include "doctests.jl" "Doctests"
 end
