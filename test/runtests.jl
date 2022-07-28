@@ -32,5 +32,6 @@ end
 @testset ExtendedTestSet "SphericalHarmonicTransforms" begin
     @include "reference.jl" "Reference Implementation"
     @include "pixels.jl" "Pixelizations"
+    @include "implementation.jl" "Implementation details"
     @include "doctests.jl" "Doctests"
 end

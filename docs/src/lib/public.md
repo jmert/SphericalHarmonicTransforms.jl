@@ -5,6 +5,16 @@ CurrentModule = SphericalHarmonicTransforms
 
 ## Functions
 
+```@docs
+synthesize
+synthesize!
+```
+
+```@docs
+analyze
+analyze!
+```
+
 ## Ring-based Pixelizations
 
 ### Pixelizations

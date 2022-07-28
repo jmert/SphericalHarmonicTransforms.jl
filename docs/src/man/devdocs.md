@@ -114,6 +114,11 @@ knowledge of the pixelization.
 
 ### [Example Implementation](@id pixelexample)
 
+```@setup examplepix
+using SphericalHarmonicTransforms
+using SphericalHarmonicTransforms: ECPPixelization
+```
+
 The built-in ECP pixelization does not support exact quadrature on the sphere, but it is
 included because the axes are uniformly sampled (so the maps are easily represented as
 matrices without any special handling) and the simplicity of its implementation.
@@ -132,84 +137,75 @@ The first step is to import the [interface](@ref pixelinterface) types.
 The new `GLPixelization` type must be a subclass of the `AbstractRingPixelization`, where
 the type parameter `R` is the nominal element type used during the transform.
 
-```jldoctest examplepix
-julia> import SphericalHarmonicTransforms: AbstractRingPixelization, Ring,
-               rings, buffer, nring, npix, nϕmax
-
-julia> struct GLPixelization{R} <: AbstractRingPixelization{R}
-           nθ::Int
-           nϕ::Int
-       end
-
-julia> GLPixelization(nθ, nϕ) = GLPixelization{Float64}(nθ, nϕ)
-GLPixelization
+```@repl examplepix
+import SphericalHarmonicTransforms: AbstractRingPixelization, Ring,
+        rings, buffer, nring, npix, nϕmax
+struct GLPixelization{R} <: AbstractRingPixelization{R}
+    nθ::Int
+    nϕ::Int
+end
+GLPixelization(nθ, nϕ) = GLPixelization{Float64}(nθ, nϕ)
 ```
 
 Then, the only other **required** step is to implement a specialization of the
 [`rings`](@ref) method to return a vector of [`Ring`](@ref) structures that describe the
 [properties of the ring](@ref pixelproperties).
 
-```jldoctest examplepix
-julia> using FastGaussQuadrature: gausslegendre
-
-julia> function rings(glpix::GLPixelization{R}) where {R}
-           nθ, nϕ = glpix.nθ, glpix.nϕ
-           nθh = (nθ + 1) ÷ 2  # number of rings in N. hemisphere + equator (if nθ is odd)
-           ϕ_π = one(R) / nϕ   # constant pixel offset for all rings
-           Δϕ = 2R(π) / nϕ     # constant azimuthal pixel size for all rings
-           stride = nθ         # constant stride, column-major ordering
-           cθ, sθΔθ = gausslegendre(nθ)  # z = cos(θ) and corresponding weights
-           # z ∈ [-1, 1] and θ ∈ [0, π] run in opposite directions, but cos(θ) == -z
-           cθ = -cθ[1:nθh]
-           sθΔθ = sθΔθ[1:nθh]
-           rings = Vector{Ring}(undef, nθh)
-           for ii in 1:nθh
-               o₁ = ii           # northern-ring offset
-               o₂ = nθ - ii + 1  # southern-ring offset
-               offs = (o₁, o₁ == o₂ ? 0 : o₂)  # pairs, except if both aligned with equator
-               rings[ii] = Ring(offs, stride, nϕ, cθ[ii], ϕ_π, sθΔθ[ii] * Δϕ)
-           end
-           return rings
-       end
-rings (generic function with 3 methods)
+```@repl examplepix
+using FastGaussQuadrature: gausslegendre
+function rings(glpix::GLPixelization{R}) where {R}
+    nθ, nϕ = glpix.nθ, glpix.nϕ
+    nθh = (nθ + 1) ÷ 2  # number of rings in N. hemisphere + equator (if nθ is odd)
+    ϕ_π = one(R) / nϕ   # constant pixel offset for all rings
+    Δϕ = 2R(π) / nϕ     # constant azimuthal pixel size for all rings
+    stride = nθ         # constant stride, column-major ordering
+    cθ, sθΔθ = gausslegendre(nθ)  # z = cos(θ) and corresponding weights
+    # z ∈ [-1, 1] and θ ∈ [0, π] run in opposite directions, but cos(θ) == -z
+    cθ = -cθ[1:nθh]
+    sθΔθ = sθΔθ[1:nθh]
+    rings = Vector{Ring}(undef, nθh)
+    for ii in 1:nθh
+        o₁ = ii           # northern-ring offset
+        o₂ = nθ - ii + 1  # southern-ring offset
+        offs = (o₁, o₁ == o₂ ? 0 : o₂)  # pairs, except if both aligned with equator
+        rings[ii] = Ring(offs, stride, nϕ, cθ[ii], ϕ_π, sθΔθ[ii] * Δϕ)
+    end
+    return rings
+end
 ```
 
 With just `rings` implemented, generic methods will then calculate other necessary
 parameters by inspecting the ring list.
-For example, `synthesize` allocates and fills a map buffer, and this is handled generically
-by counting the number of pixels described by the ring structures and allocating a vector
-of equal length:
-```jldoctest examplepix
-julia> glpix = GLPixelization(100, 200)
-100-ring GLPixelization{Float64} with 20000 pixels
 
-julia> npix(glpix)
-20000
-
-julia> buffer(glpix) |> println∘summary
-20000-element Vector{Float64}
+For example, we can observe that the Gauss-Legendre grid has better properties with respect
+to the finite integration when compared to the ECP grid.
+```@repl examplepix
+alms = zeros(ComplexF64, 6, 6); alms[3, 1] = 1;  # a_{20} = 1
+ecppix, glpix = ECPPixelization(50, 100), GLPixelization(50, 100);
+ecpmap, glmap = synthesize(ecppix, alms), synthesize(glpix, alms);
+analyze(ecppix, ecpmap, #=lmax=# 5)
+analyze(glpix, glmap, #=lmax=# 5)
 ```
+Notice that the ECP grid analysis "leaks" power into neighboring spherical harmonic
+coefficients, but the GL grid almost exactly recovers the input coefficients.
 
-While convenient (because only the `ring` method must be written), the generic fallback
-methods are less efficient and/or produce less desirable outputs than if specialized
-methods are written.
-
-For example, the Gauss-Legendre grid is very similar to the ECP grid in that it is often
-very convenient to represent it as a matrix rather than a vector.
-The _shape_ of the map buffers is immaterial, as long as the offsets and strides returned
-by `rings` correspond to elements within the array's linear indices.
-(Or said differently, the transforms effectively see any map buffer as its equivalent
-`reshape(mapbuf, :)` vector representation.)
-Overloading the [`buffer`](@ref) function permits synthesizing matrix maps arrays instead
-of vectors:
-```jldoctest examplepix
-julia> function buffer(glpix::GLPixelization, ::Type{T}) where {T}
-           return Matrix{T}(undef, glpix.nθ, glpix.nϕ)
-       end
-buffer (generic function with 4 methods)
-
-julia> buffer(glpix) |> println∘summary
-100×200 Matrix{Float64}
+Returning to the optional components of abstract pixelization interface, compare the shapes
+of the two maps created above:
+```@repl examplepix
+size(ecpmap)
+size(glmap)
+```
+Like the ECP grid, it may be preferable to conceptualize and represent the GL grid as
+a matrix rather than a vector.
+(Fundamentally, the _shape_ of the array is immaterial to `synthesize` and `analyze`, as
+long as the described ring pixelization is within bounds of the array's linear indices.)
+Overloading the [`buffer`](@ref) function provides a mechanism to allocate the synthesize
+map with a preferred shape:
+```@repl examplepix
+function buffer(glpix::GLPixelization, ::Type{T}) where {T}
+    return Matrix{T}(undef, glpix.nθ, glpix.nϕ)
+end
+size(synthesize(glpix, alms))
 ```
 
 !!! note
@@ -225,30 +221,19 @@ list of all rings and extracting/calculating the relevant quantites.
 We can see this quite obviously as memory allocations when running these functions,
 despite the grid size alone provides all the necessary information (and therefore should
 not require actually allocating the rings vector):
-```jldoctest examplepix
-julia> (nring(glpix), npix(glpix), nϕmax(glpix)); # warmup
-
-julia> @time (nring(glpix), npix(glpix), nϕmax(glpix))
-  0.000063 seconds (332 allocations: 34.312 KiB)
-(100, 20000, 200)
+```@repl examplepix
+(nring(glpix), npix(glpix), nϕmax(glpix)); # warmup
+@time (nring(glpix), npix(glpix), nϕmax(glpix))
 ```
 By overloading specializations for the `GLPixelization` type,
-```jldoctest examplepix
-julia> nring(glpix::GLPixelization) = glpix.nθ
-nring (generic function with 3 methods)
-
-julia> npix(glpix::GLPixelization) = glpix.nθ * glpix.nϕ
-npix (generic function with 3 methods)
-
-julia> nϕmax(glpix::GLPixelization) = glpix.nϕ
-nϕmax (generic function with 3 methods)
+```@repl examplepix
+nring(glpix::GLPixelization) = glpix.nθ
+npix(glpix::GLPixelization) = glpix.nθ * glpix.nϕ
+nϕmax(glpix::GLPixelization) = glpix.nϕ
 ```
 we can avoid such unnecessary computation and allocation:
-```jldoctest examplepix
-julia> (nring(glpix), npix(glpix), nϕmax(glpix)); # warmup
-
-julia> @time (npix(glpix), nϕmax(glpix))
-  0.000009 seconds (2 allocations: 48 bytes)
-(20000, 200)
+```@repl examplepix
+(nring(glpix), npix(glpix), nϕmax(glpix)); # warmup
+@time (npix(glpix), nϕmax(glpix))
 ```
 (where the remaining allocation is due to the returned tuple of values).
