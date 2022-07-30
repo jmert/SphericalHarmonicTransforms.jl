@@ -29,7 +29,10 @@ makedocs(
             "Developer Documentation" => "man/devdocs.md",
             "Literature/References" => "man/references.md"
         ],
-        "API Reference" => "lib/public.md",
+        "API Reference" => [
+            "lib/public.md",
+            "lib/private.md",
+        ],
     ],
 )
 

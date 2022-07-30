@@ -30,6 +30,7 @@ macro include(file, desc)
 end
 
 @testset ExtendedTestSet "SphericalHarmonicTransforms" begin
+    @include "numerics.jl" "Numerical support"
     @include "reference.jl" "Reference Implementation"
     @include "pixels.jl" "Pixelizations"
     @include "implementation.jl" "Implementation details"

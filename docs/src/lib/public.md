@@ -1,7 +1,7 @@
 ```@meta
 CurrentModule = SphericalHarmonicTransforms
 ```
-# API Reference
+# Public API
 
 ## Functions
 
