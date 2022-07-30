@@ -237,3 +237,33 @@ we can avoid such unnecessary computation and allocation:
 @time (npix(glpix), nϕmax(glpix))
 ```
 (where the remaining allocation is due to the returned tuple of values).
+
+### Testing new pixelizations
+
+This package provides a minor test suite to automate checking various aspects of the
+implementation of a new pixelization.
+
+The test suite requires direct access to several underlying implementation packages, so
+the following packages must also be included as direct dependencies in your test project:
+
+- AssociatedLegendrePolynomials
+- FFTW
+- SphericalHarmonicTransforms
+
+Then, include the test suite from this package's source directory with:
+```@repl examplepix
+import SphericalHarmonicTransforms
+include(joinpath(dirname(pathof(SphericalHarmonicTransforms)), "..", "test", "testsuite.jl"))
+```
+which creates a new `TestSuite` module in the current scope.
+
+Tests are run against an instance of the pixelization by the `TestSuite.runtests` function:
+```@repl examplepix
+# even dimensions
+TestSuite.runtests(GLPixelization(50, 100))
+# odd dimensions
+TestSuite.runtests(GLPixelization(51, 101), rtol = 1e-6)
+```
+The second line above shows that an optional relative tolerance may be provided by which
+approximate equality is judged when comparing synthesis and analysis of the new
+pixelization against a reference implementation.
