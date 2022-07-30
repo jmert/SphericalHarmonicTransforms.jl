@@ -35,10 +35,10 @@ module TestSuite
         return (θ, ϕ, Δ)
     end
 
-    function runtests(ringpix)
+    function runtests(ringpix; rtol = nothing)
         @testset "Test Suite - $(typeof(ringpix))" begin
             interface(ringpix)
-            reference(ringpix)
+            reference(ringpix, rtol)
         end
         return nothing
     end
@@ -62,7 +62,10 @@ module TestSuite
         return nothing
     end
 
-    function reference(ringpix::AbstractRingPixelization{R}) where {R}
+    function reference(ringpix::AbstractRingPixelization{R}, rtol) where {R}
+        if rtol === nothing
+            rtol = sqrt(eps(one(R)))
+        end
         @testset "Reference Comparisons" begin
             θ, ϕ, Δ = ringpix2coords(ringpix)
             lmax = 5
@@ -73,8 +76,8 @@ module TestSuite
 
                 mapbuf = synthesize_reference(alms, θ, ϕ)
                 alms′ = analyze_reference(mapbuf .* Δ, θ, ϕ, lmax, lmax)
-                @test synthesize(ringpix, alms) ≈ mapbuf
-                @test analyze(ringpix, mapbuf, lmax, lmax) ≈ alms′
+                @test synthesize(ringpix, alms) ≈ mapbuf rtol=rtol
+                @test analyze(ringpix, mapbuf, lmax, lmax) ≈ alms′ rtol=rtol
             end
         end
         return nothing
